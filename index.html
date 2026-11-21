@@ -131,18 +131,50 @@ function addMsg(text, sender, note = "", isHtml = false) {
 }
 
 async function searchInternet(q) {
-  // 1. Очищаем запрос от лишних слов ("что такое", "найди", "кто такой")
+  // 1. Очищаем запрос от лишних слов
   const cleanQ = q.toLowerCase()
     .replace(/^(что такое|кто такой|кто такая|найди|поищи|расскажи про|информация о)\s+/i, "")
     .replace(/[?!.]/g, "")
     .trim();
 
-  // 2. Сначала проверяем твою встроенную базу LOCAL_WIKI
+  // 2. Проверяем встроенную базу LOCAL_WIKI
   const lowQ = cleanQ.replace(/ё/g, "е");
   const localKey = Object.keys(LOCAL_WIKI).find(k => lowQ.includes(k));
   if (localKey) {
     return { text: `📚 [Энциклопедия AiMini]: ${LOCAL_WIKI[localKey]}`, isHtml: false };
   }
+
+  // 3. Ищем в Википедии через открытый API
+  try {
+    const wikiUrl = `https://wikipedia.org{encodeURIComponent(cleanQ)}&gsrlimit=1&prop=extracts&exintro=1&explaintext=1&exsentences=3&format=json&origin=*`;
+    
+    const res = await fetch(wikiUrl);
+    const data = await res.json();
+    const pages = data?.query?.pages;
+
+    if (pages) {
+      const page = Object.values(pages)[0]; // <-- Вот здесь не хватало [0]
+      if (page && page.extract) {
+        const link = `https://wikipedia.org{page.pageid}`;
+        return {
+          text: `🌐 <b>Из сети (${page.title}):</b>\n${page.extract}\n<a href="${link}" target="_blank">Читать подробнее →</a>`,
+          isHtml: true
+        };
+      }
+    }
+  } catch (e) {
+    return {
+      text: `⚠️ Не удалось подключиться к сети. Проверь интернет или попробуй позже.`,
+      isHtml: false
+    };
+  }
+
+  // 4. Если статьи реально нет
+  return {
+    text: `🔎 Я поискал «${cleanQ}» в сети, но точной статьи не нашёл. Попробуй спросить одним-двумя словами!`,
+    isHtml: false
+  };
+}
 
   // 3. Ищем в Википедии через открытый API
   try {
