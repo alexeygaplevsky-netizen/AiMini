@@ -131,26 +131,48 @@ function addMsg(text, sender, note = "", isHtml = false) {
 }
 
 async function searchInternet(q) {
-  const lowQ = q.toLowerCase().replace("ё", "е");
+  // 1. Очищаем запрос от лишних слов ("что такое", "найди", "кто такой")
+  const cleanQ = q.toLowerCase()
+    .replace(/^(что такое|кто такой|кто такая|найди|поищи|расскажи про|информация о)\s+/i, "")
+    .replace(/[?!.]/g, "")
+    .trim();
+
+  // 2. Сначала проверяем твою встроенную базу LOCAL_WIKI
+  const lowQ = cleanQ.replace(/ё/g, "е");
   const localKey = Object.keys(LOCAL_WIKI).find(k => lowQ.includes(k));
   if (localKey) {
     return { text: `📚 [Энциклопедия AiMini]: ${LOCAL_WIKI[localKey]}`, isHtml: false };
   }
+
+  // 3. Ищем в Википедии через открытый API
   try {
-    const ruwikiUrl = `https://ruwiki.ru{encodeURIComponent(q)}&gsrlimit=1&prop=extracts&exintro=1&explaintext=1&exsentences=2&format=json&origin=*`;
-    const res = await fetch(ruwikiUrl);
+    const wikiUrl = `https://wikipedia.org{encodeURIComponent(cleanQ)}&gsrlimit=1&prop=extracts&exintro=1&explaintext=1&exsentences=3&format=json&origin=*`;
+    
+    const res = await fetch(wikiUrl);
     const data = await res.json();
-    const pages = data && data.query && data.query.pages;
+    const pages = data?.query?.pages;
+
     if (pages) {
-      const page = Object.values(pages).at(0);
+      const page = Object.values(pages)[0];
       if (page && page.extract) {
-        return { text: `📚 [Рувики — ${page.title}]: ${page.extract.trim()}`, isHtml: false };
+        const link = `https://wikipedia.org{page.pageid}`;
+        return {
+          text: `🌐 <b>Из сети (${page.title}):</b>\n${page.extract}\n<a href="${link}" target="_blank">Читать подробнее →</a>`,
+          isHtml: true
+        };
       }
     }
-  } catch (e) {}
-  const yaLink = `https://ya.ru{encodeURIComponent(q)}`;
-  return { text: `🔎 Точной справки в базах не нашлось. <a href="${yaLink}" target="_blank">Открыть результаты в Яндексе по запросу «${q}» ↗</a>`, isHtml: true };
+  } catch (e) {
+    console.error("Ошибка поиска:", e);
+  }
+
+  // 4. Если ничего не нашлось
+  return {
+    text: `🔎 Я поискал «${cleanQ}» в сети, но точной статьи не нашёл. Попробуй спросить одним-двумя словами!`,
+    isHtml: false
+  };
 }
+
 
 function generateMarkov(raw) {
   const words = (raw.toLowerCase().match(/[а-яёa-z0-9\-]+/g) || []);
