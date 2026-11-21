@@ -136,56 +136,57 @@ async function searchInternet(q) {
     .replace(/[?!.]/g, "")
     .trim();
 
+  // 1. Встроенная база LOCAL_WIKI
   const lowQ = cleanQ.replace(/ё/g, "е");
   const localKey = Object.keys(LOCAL_WIKI).find(k => lowQ.includes(k));
   if (localKey) {
     return { text: `📚 [Энциклопедия AiMini]: ${LOCAL_WIKI[localKey]}`, isHtml: false };
   }
 
-  // Способ 1: Поиск через API Википедии (используем .at(0) вместо скобок!)
+  // 2. Поиск через РУВИКИ (работает в РФ без блокировок!)
   try {
-    const wikiUrl = `https://wikipedia.org{encodeURIComponent(cleanQ)}&gsrlimit=1&prop=extracts&exintro=1&explaintext=1&exsentences=3&format=json&origin=*`;
-    const res = await fetch(wikiUrl);
+    const ruwikiUrl = `https://ruwiki.ru{encodeURIComponent(cleanQ)}&gsrlimit=1&prop=extracts&exintro=1&explaintext=1&exsentences=3&format=json&origin=*`;
+    const res = await fetch(ruwikiUrl);
     const data = await res.json();
     const pages = data?.query?.pages;
 
     if (pages) {
       const page = Object.values(pages).at(0);
       if (page && page.extract) {
-        const link = `https://wikipedia.org{page.pageid}`;
+        const link = `https://ruwiki.ru{encodeURIComponent(page.title.replace(/ /g, "_"))}`;
         return {
-          text: `🌐 <b>Из сети (${page.title}):</b>\n${page.extract}\n<a href="${link}" target="_blank">Читать подробнее →</a>`,
+          text: `🌐 <b>Рувики (${page.title}):</b>\n${page.extract}\n<a href="${link}" target="_blank">Читать подробнее →</a>`,
           isHtml: true
         };
       }
     }
   } catch (e) {
-    console.log("Ошибка основного поиска:", e);
+    console.log("Ошибка Рувики:", e);
   }
 
-  // Способ 2: Запасной быстрый поиск через REST API Википедии (если первый не сработал)
+  // 3. Запасной поиск через DuckDuckGo (мгновенные ответы)
   try {
-    const titleCap = cleanQ.charAt(0).toUpperCase() + cleanQ.slice(1);
-    const restUrl = `https://wikipedia.org{encodeURIComponent(titleCap)}`;
-    const res2 = await fetch(restUrl);
-    if (res2.ok) {
-      const data2 = await res2.json();
-      if (data2.extract) {
-        return {
-          text: `🌐 <b>Из сети (${data2.title}):</b>\n${data2.extract}\n<a href="${data2.content_urls?.desktop?.page || '#'}" target="_blank">Читать подробнее →</a>`,
-          isHtml: true
-        };
-      }
+    const ddgUrl = `https://duckduckgo.com{encodeURIComponent(cleanQ)}&format=json&no_html=1&skip_disambig=1`;
+    const res2 = await fetch(ddgUrl);
+    const data2 = await res2.json();
+    if (data2 && data2.AbstractText) {
+      return {
+        text: `🌐 <b>Из сети (${data2.Heading}):</b>\n${data2.AbstractText}\n<a href="${data2.AbstractURL}" target="_blank">Источник →</a>`,
+        isHtml: true
+      };
     }
   } catch (e) {
-    console.log("Ошибка запасного поиска:", e);
+    console.log("Ошибка DuckDuckGo:", e);
   }
 
+  // 4. Если оба источника не ответили (например, провайдер блокирует CORS-запросы)
+  const searchLink = `https://ya.ru{encodeURIComponent(cleanQ)}`;
   return {
-    text: `🔎 Я поискал «${cleanQ}» в сети, но точной статьи не нашёл (возможно, заблокирован доступ к энциклопедии или нет интернета).`,
-    isHtml: false
+    text: `🔎 Прямой доступ к энциклопедии сейчас ограничен браузером, но я подготовил для тебя поиск по запросу «${cleanQ}»:\n<a href="${searchLink}" target="_blank">Открыть ответ в Яндексе →</a>`,
+    isHtml: true
   };
 }
+
 
 
 function generateMarkov(raw) {
