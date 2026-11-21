@@ -1,3 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AiMini — Персональный ИИ</title>
+<style>
+  body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; height: 100vh; }
+  .app { width: 100%; max-width: 750px; display: flex; flex-direction: column; background: #1e293b; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+  .header { padding: 15px 20px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .header h2 { margin: 0; font-size: 1.2rem; color: #38bdf8; }
+  .stats { font-size: 0.85rem; color: #94a3b8; }
+  .chat { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 80%; padding: 10px 15px; border-radius: 14px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; font-family: 'Consolas', 'Segoe UI', monospace; }
+  .user { align-self: flex-end; background: #2563eb; color: white; border-bottom-right-radius: 4px; font-family: 'Segoe UI', sans-serif; }
+  .bot { align-self: flex-start; background: #334155; color: #f1f5f9; border-bottom-left-radius: 4px; }
+  .bot a { color: #38bdf8; text-decoration: underline; }
+  .note { font-size: 0.78rem; color: #fbbf24; margin-top: 5px; font-family: 'Segoe UI', sans-serif; }
+  .controls { padding: 12px; background: #0f172a; border-top: 1px solid #334155; display: flex; gap: 8px; }
+  input { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #475569; background: #1e293b; color: white; font-size: 1rem; outline: none; }
+  button { padding: 10px 16px; border-radius: 10px; border: none; background: #38bdf8; color: #0f172a; font-weight: bold; cursor: pointer; }
+  button:hover { background: #7dd3fc; }
+  .voice-btn { background: #334155; color: #f8fafc; }
+  .voice-btn.active { background: #22c55e; color: #0f172a; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div>
+      <h2>🚀 AiMini — Персональный ИИ</h2>
+      <div class="stats" id="statsBar">Загрузка словаря...</div>
+    </div>
+    <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()">🔇 Голос: ВЫКЛ</button>
+  </div>
+  <div class="chat" id="chatBox"></div>
+  <div class="controls">
+    <input type="text" id="msgInput" placeholder="Спроси 'что такое солнце', 'нарисуй ракету', '25*4'..." onkeydown="if(event.key==='Enter') sendMsg()">
+    <button onclick="sendMsg()">Отправить</button>
+  </div>
+</div>
 <script>
 let botData = { qa: {"привет": ["Здарова!", "Привет-привет, создатель!"]}, markov: {}, profile: {name: null}, stats: {xp: 0, msgs: 0, mood: 70} };
 let voiceOn = false;
@@ -19,19 +60,20 @@ const ARTS = {
   "сердц": "  ** **\n *******\n  *****\n    *",
   "дом": "    /\\\n   /  \\\n  /____\\\n  | [] |\n  |____|"
 };
-
-// Встроенная быстрая энциклопедия (работает мгновенно и без интернета)
 const LOCAL_WIKI = {
   "солнц": "Солнце — единственная звезда Солнечной системы, раскалённый плазменный шар, вокруг которого обращаются Земля и другие планеты.",
-  "сочи": "Сочи — крупнейший курортный город России, расположенный на северо-восточном побережье Чёрного моря в Краснодарском крае.",
+  "лун": "Луна — единственный естественный спутник Земли и второй по яркости объект на земном небосводе после Солнца.",
+  "земл": "Земля — третья по удалённости от Солнца планета Солнечной системы и единственное известное небесное тело с жизнью.",
+  "марс": "Марс — четвёртая по удалённости от Солнца планета, известная как «Красная планета» из-за оксида железа на поверхности.",
+  "сочи": "Сочи — крупнейший курортный город России на побережье Чёрного моря в Краснодарском крае.",
   "карпинск": "Карпинск — город в Свердловской области России, расположенный на восточном склоне Северного Урала на реке Турье.",
-  "квадратн": "Квадратный корень из числа a — это число x, дающее a при возведении в квадрат (x × x = a).",
-  "гравитац": "Гравитация (всемирное тяготение) — фундаментальное взаимодействие между всеми материальными телами, обладающими массой.",
-  "черн": "Чёрная дыра — область пространства-времени с настолько сильным притяжением, что покинуть её не может даже свет.",
-  "python": "Python — популярный язык программирования с простым и понятным синтаксисом, главный язык для создания нейросетей и ИИ.",
-  "roblox": "Roblox — игровая онлайн-платформа и конструктор, где пользователи сами создают игры и миры на языке Lua.",
-  "minecraft": "Minecraft — знаменитая компьютерная игра-песочница, в которой весь мир состоит из трёхмерных блоков.",
-  "интеллект": "Искусственный интеллект (ИИ) — способность программ и компьютеров выполнять творческие и логические задачи, как человек."
+  "корен": "Корень — в математике число, которое при возведении в заданную степень даёт исходное число (например, квадратный корень из 9 равен 3).",
+  "гравитац": "Гравитация — универсальное притяжение между всеми телами, обладающими массой.",
+  "черн": "Чёрная дыра — область пространства с настолько сильным притяжением, что её не может покинуть даже свет.",
+  "python": "Python — популярный язык программирования с простым синтаксисом, главный язык для создания нейросетей и ИИ.",
+  "roblox": "Roblox — игровая онлайн-платформа, где пользователи сами создают игры и миры на языке Lua.",
+  "minecraft": "Minecraft — компьютерная игра-песочница, в которой весь мир состоит из трёхмерных блоков.",
+  "интеллект": "Искусственный интеллект (ИИ) — способность компьютерных систем выполнять творческие и логические задачи, как человек."
 };
 
 async function init() {
@@ -46,7 +88,7 @@ async function init() {
     botData.profile = Object.assign(botData.profile, p.profile);
   }
   updateStats();
-  addMsg("Привет! Энциклопедия (Рувики + встроенная база) подключена! Попробуй написать: «что такое солнце», «найди Сочи» или «нарисуй ракету».", "bot");
+  addMsg("Привет! Сайт восстановлен и работает! Спроси «что такое солнце», «найди Карпинск» или «нарисуй ракету».", "bot");
 }
 
 function updateStats() {
@@ -90,13 +132,10 @@ function addMsg(text, sender, note = "", isHtml = false) {
 
 async function searchInternet(q) {
   const lowQ = q.toLowerCase().replace("ё", "е");
-  // 1. Сначала проверяем мгновенную встроенную энциклопедию
   const localKey = Object.keys(LOCAL_WIKI).find(k => lowQ.includes(k));
   if (localKey) {
     return { text: `📚 [Энциклопедия AiMini]: ${LOCAL_WIKI[localKey]}`, isHtml: false };
   }
-
-  // 2. Пробуем российскую энциклопедию РУВИКИ (работает в РФ без блокировок)
   try {
     const ruwikiUrl = `https://ruwiki.ru{encodeURIComponent(q)}&gsrlimit=1&prop=extracts&exintro=1&explaintext=1&exsentences=2&format=json&origin=*`;
     const res = await fetch(ruwikiUrl);
@@ -109,8 +148,6 @@ async function searchInternet(q) {
       }
     }
   } catch (e) {}
-
-  // 3. Запасная ссылка на Яндекс
   const yaLink = `https://ya.ru{encodeURIComponent(q)}`;
   return { text: `🔎 Точной справки в базах не нашлось. <a href="${yaLink}" target="_blank">Открыть результаты в Яндексе по запросу «${q}» ↗</a>`, isHtml: true };
 }
