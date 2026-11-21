@@ -130,88 +130,82 @@ function addMsg(text, sender, note = "", isHtml = false) {
   box.scrollTop = box.scrollHeight;
 }
 
-aasync function searchInternet(q) {
+async function searchInternet(q) {
   const cleanQ = q.toLowerCase()
     .replace(/^(что такое|кто такой|кто такая|найди|поищи|расскажи про|информация о)\s+/i, "")
     .replace(/[?!.]/g, "")
     .trim();
 
-  // 1. Проверяем встроенную базу LOCAL_WIKI (и то, что бот уже выучил сам!)
   const savedWiki = JSON.parse(localStorage.getItem("aimini_learned_wiki") || "{}");
-  const allWiki = { ...LOCAL_WIKI, ...savedWiki };
+  const allWiki = Object.assign({}, LOCAL_WIKI, savedWiki);
   const lowQ = cleanQ.replace(/ё/g, "е");
   const localKey = Object.keys(allWiki).find(k => lowQ.includes(k) || k.includes(lowQ));
-  
+
   if (localKey && lowQ.length > 2) {
-    return { text: `📚 [Память AiMini]: ${allWiki[localKey]}`, isHtml: false };
+    return { text: "📚 [Память AiMini]: " + allWiki[localKey], isHtml: false };
   }
 
-  // 2. Ищем через РУВИКИ через бесплатный CORS-прокси (обходит запрет браузера!)
-  try {
-    const targetUrl = `https://ruwiki.ru{encodeURIComponent(cleanQ)}&gsrlimit=1&prop=extracts&exintro=1&explaintext=1&exsentences=3&format=json`;
-    const proxyUrl = `https://allorigins.win{encodeURIComponent(targetUrl)}`;
-    
-    const res = await fetch(proxyUrl);
-    const proxyData = await res.json();
-    
-    if (proxyData && proxyData.contents) {
-      const data = JSON.parse(proxyData.contents);
-      const pages = data?.query?.pages;
-      if (pages) {
-        const page = Object.values(pages).at(0);
-        if (page && page.extract) {
-          // Сохраняем новое знание в память бота навсегда!
-          savedWiki[lowQ] = page.extract;
-          localStorage.setItem("aimini_learned_wiki", JSON.stringify(savedWiki));
+  const p = "https:" + "//";
+  const apiPath = "/w/api.php?action=query&generator=search&gsrsearch=";
+  const apiEnd = "&gsrlimit=1&prop=extracts&exintro=1&explaintext=1&exsentences=3&format=json";
 
-          const link = `https://ruwiki.ru{encodeURIComponent(page.title.replace(/ /g, "_"))}`;
+  // Попытка 1: Рувики через прокси
+  try {
+    const target1 = p + "ru.ruwiki.ru" + apiPath + encodeURIComponent(cleanQ) + apiEnd;
+    const proxy1 = p + "api.allorigins.win/get?url=" + encodeURIComponent(target1);
+    const res1 = await fetch(proxy1);
+    const pData1 = await res1.json();
+
+    if (pData1 && pData1.contents) {
+      const d1 = JSON.parse(pData1.contents);
+      const pages1 = d1 && d1.query && d1.query.pages;
+      if (pages1) {
+        const page1 = Object.values(pages1).at(0);
+        if (page1 && page1.extract) {
+          savedWiki[lowQ] = page1.extract;
+          localStorage.setItem("aimini_learned_wiki", JSON.stringify(savedWiki));
+          const link1 = p + "ru.ruwiki.ru/wiki/" + encodeURIComponent(page1.title.replace(/ /g, "_"));
           return {
-            text: `🌐 <b>Рувики (${page.title}):</b>\n${page.extract}\n<a href="${link}" target="_blank">Читать подробнее →</a>`,
+            text: "🌐 <b>Рувики (" + page1.title + "):</b>\n" + page1.extract + "\n<a href=\"" + link1 + "\" target=\"_blank\">Читать подробнее →</a>",
             isHtml: true
           };
         }
       }
     }
-  } catch (e) {
-    console.log("Ошибка прокси Рувики:", e);
-  }
+  } catch (e) {}
 
-  // 3. Запасной вариант через Википедию + прокси
+  // Попытка 2: Википедия через прокси
   try {
-    const wikiTarget = `https://wikipedia.org{encodeURIComponent(cleanQ)}&gsrlimit=1&prop=extracts&exintro=1&explaintext=1&exsentences=3&format=json`;
-    const proxyUrl2 = `https://allorigins.win{encodeURIComponent(wikiTarget)}`;
-    
-    const res2 = await fetch(proxyUrl2);
-    const proxyData2 = await res2.json();
-    
-    if (proxyData2 && proxyData2.contents) {
-      const data2 = JSON.parse(proxyData2.contents);
-      const pages2 = data2?.query?.pages;
+    const target2 = p + "ru.wikipedia.org" + apiPath + encodeURIComponent(cleanQ) + apiEnd;
+    const proxy2 = p + "api.allorigins.win/get?url=" + encodeURIComponent(target2);
+    const res2 = await fetch(proxy2);
+    const pData2 = await res2.json();
+
+    if (pData2 && pData2.contents) {
+      const d2 = JSON.parse(pData2.contents);
+      const pages2 = d2 && d2.query && d2.query.pages;
       if (pages2) {
         const page2 = Object.values(pages2).at(0);
         if (page2 && page2.extract) {
           savedWiki[lowQ] = page2.extract;
           localStorage.setItem("aimini_learned_wiki", JSON.stringify(savedWiki));
-
-          const link2 = `https://wikipedia.org{page2.pageid}`;
+          const link2 = p + "ru.wikipedia.org/?curid=" + page2.pageid;
           return {
-            text: `🌐 <b>Википедия (${page2.title}):</b>\n${page2.extract}\n<a href="${link2}" target="_blank">Читать подробнее →</a>`,
+            text: "🌐 <b>Википедия (" + page2.title + "):</b>\n" + page2.extract + "\n<a href=\"" + link2 + "\" target=\"_blank\">Читать подробнее →</a>",
             isHtml: true
           };
         }
       }
     }
-  } catch (e) {
-    console.log("Ошибка прокси Википедии:", e);
-  }
+  } catch (e) {}
 
-    // 4. Резервная кнопка поиска
-  const searchLink = `https://ya.ru{encodeURIComponent(cleanQ)}`;
+  // Попытка 3: Кнопка поиска в Яндексе
+  const yaLink = p + "ya.ru/search/?text=" + encodeURIComponent(cleanQ);
   return {
-    text: `🔎 Не удалось загрузить текст статьи (прокси перегружен), но я подготовил быстрый поиск по запросу «${cleanQ}»:\n<a href="${searchLink}" target="_blank">Открыть ответ в Яндексе →</a>`,
+    text: "🔎 Не удалось загрузить текст статьи (прокси перегружен), но я подготовил быстрый поиск по запросу «" + cleanQ + "»:\n<a href=\"" + yaLink + "\" target=\"_blank\">Открыть ответ в Яндексе →</a>",
     isHtml: true
   };
-} // <-- Проверь, чтобы эта закрывающая скобка стояла перед следующей функцией!
+}
 
 
 
