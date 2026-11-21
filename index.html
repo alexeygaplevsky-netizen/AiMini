@@ -131,29 +131,26 @@ function addMsg(text, sender, note = "", isHtml = false) {
 }
 
 async function searchInternet(q) {
-  // 1. Очищаем запрос от лишних слов
   const cleanQ = q.toLowerCase()
     .replace(/^(что такое|кто такой|кто такая|найди|поищи|расскажи про|информация о)\s+/i, "")
     .replace(/[?!.]/g, "")
     .trim();
 
-  // 2. Проверяем встроенную базу LOCAL_WIKI
   const lowQ = cleanQ.replace(/ё/g, "е");
   const localKey = Object.keys(LOCAL_WIKI).find(k => lowQ.includes(k));
   if (localKey) {
     return { text: `📚 [Энциклопедия AiMini]: ${LOCAL_WIKI[localKey]}`, isHtml: false };
   }
 
-  // 3. Ищем в Википедии через открытый API
+  // Способ 1: Поиск через API Википедии (используем .at(0) вместо скобок!)
   try {
     const wikiUrl = `https://wikipedia.org{encodeURIComponent(cleanQ)}&gsrlimit=1&prop=extracts&exintro=1&explaintext=1&exsentences=3&format=json&origin=*`;
-    
     const res = await fetch(wikiUrl);
     const data = await res.json();
     const pages = data?.query?.pages;
 
     if (pages) {
-      const page = Object.values(pages)[0]; // <-- Вот здесь не хватало [0]
+      const page = Object.values(pages).at(0);
       if (page && page.extract) {
         const link = `https://wikipedia.org{page.pageid}`;
         return {
@@ -163,44 +160,29 @@ async function searchInternet(q) {
       }
     }
   } catch (e) {
-    return {
-      text: `⚠️ Не удалось подключиться к сети. Проверь интернет или попробуй позже.`,
-      isHtml: false
-    };
+    console.log("Ошибка основного поиска:", e);
   }
 
-  // 4. Если статьи реально нет
-  return {
-    text: `🔎 Я поискал «${cleanQ}» в сети, но точной статьи не нашёл. Попробуй спросить одним-двумя словами!`,
-    isHtml: false
-  };
-}
-
-  // 3. Ищем в Википедии через открытый API
+  // Способ 2: Запасной быстрый поиск через REST API Википедии (если первый не сработал)
   try {
-    const wikiUrl = `https://wikipedia.org{encodeURIComponent(cleanQ)}&gsrlimit=1&prop=extracts&exintro=1&explaintext=1&exsentences=3&format=json&origin=*`;
-    
-    const res = await fetch(wikiUrl);
-    const data = await res.json();
-    const pages = data?.query?.pages;
-
-    if (pages) {
-      const page = Object.values(pages)[0];
-      if (page && page.extract) {
-        const link = `https://wikipedia.org{page.pageid}`;
+    const titleCap = cleanQ.charAt(0).toUpperCase() + cleanQ.slice(1);
+    const restUrl = `https://wikipedia.org{encodeURIComponent(titleCap)}`;
+    const res2 = await fetch(restUrl);
+    if (res2.ok) {
+      const data2 = await res2.json();
+      if (data2.extract) {
         return {
-          text: `🌐 <b>Из сети (${page.title}):</b>\n${page.extract}\n<a href="${link}" target="_blank">Читать подробнее →</a>`,
+          text: `🌐 <b>Из сети (${data2.title}):</b>\n${data2.extract}\n<a href="${data2.content_urls?.desktop?.page || '#'}" target="_blank">Читать подробнее →</a>`,
           isHtml: true
         };
       }
     }
   } catch (e) {
-    console.error("Ошибка поиска:", e);
+    console.log("Ошибка запасного поиска:", e);
   }
 
-  // 4. Если ничего не нашлось
   return {
-    text: `🔎 Я поискал «${cleanQ}» в сети, но точной статьи не нашёл. Попробуй спросить одним-двумя словами!`,
+    text: `🔎 Я поискал «${cleanQ}» в сети, но точной статьи не нашёл (возможно, заблокирован доступ к энциклопедии или нет интернета).`,
     isHtml: false
   };
 }
