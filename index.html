@@ -205,13 +205,14 @@ aasync function searchInternet(q) {
     console.log("Ошибка прокси Википедии:", e);
   }
 
-  // 4. Резервная кнопка поиска
+    // 4. Резервная кнопка поиска
   const searchLink = `https://ya.ru{encodeURIComponent(cleanQ)}`;
   return {
     text: `🔎 Не удалось загрузить текст статьи (прокси перегружен), но я подготовил быстрый поиск по запросу «${cleanQ}»:\n<a href="${searchLink}" target="_blank">Открыть ответ в Яндексе →</a>`,
     isHtml: true
   };
-}
+} // <-- Проверь, чтобы эта закрывающая скобка стояла перед следующей функцией!
+
 
 
 
