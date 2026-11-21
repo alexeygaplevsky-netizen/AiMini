@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AiMini — Персональный ИИ</title>
+<style>
+  body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; height: 100vh; }
+  .app { width: 100%; max-width: 750px; display: flex; flex-direction: column; background: #1e293b; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+  .header { padding: 15px 20px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .header h2 { margin: 0; font-size: 1.2rem; color: #38bdf8; }
+  .stats { font-size: 0.85rem; color: #94a3b8; }
+  .chat { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 80%; padding: 10px 15px; border-radius: 14px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; font-family: 'Consolas', 'Segoe UI', monospace; }
+  .user { align-self: flex-end; background: #2563eb; color: white; border-bottom-right-radius: 4px; font-family: 'Segoe UI', sans-serif; }
+  .bot { align-self: flex-start; background: #334155; color: #f1f5f9; border-bottom-left-radius: 4px; }
+  .bot a { color: #38bdf8; text-decoration: underline; }
+  .note { font-size: 0.78rem; color: #fbbf24; margin-top: 5px; font-family: 'Segoe UI', sans-serif; }
+  .controls { padding: 12px; background: #0f172a; border-top: 1px solid #334155; display: flex; gap: 8px; }
+  input { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #475569; background: #1e293b; color: white; font-size: 1rem; outline: none; }
+  button { padding: 10px 16px; border-radius: 10px; border: none; background: #38bdf8; color: #0f172a; font-weight: bold; cursor: pointer; }
+  button:hover { background: #7dd3fc; }
+  .voice-btn { background: #334155; color: #f8fafc; }
+  .voice-btn.active { background: #22c55e; color: #0f172a; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div>
+      <h2>🚀 AiMini — Персональный ИИ</h2>
+      <div class="stats" id="statsBar">Загрузка словаря...</div>
+    </div>
+    <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()">🔇 Голос: ВЫКЛ</button>
+  </div>
+  <div class="chat" id="chatBox"></div>
+  <div class="controls">
+    <input type="text" id="msgInput" placeholder="Спроси 'найди Сочи', 'нарисуй ракету', '25*4'..." onkeydown="if(event.key==='Enter') sendMsg()">
+    <button onclick="sendMsg()">Отправить</button>
+  </div>
+</div>
+<script>
+let botData = { qa: {"привет": ["Здарова!", "Привет-привет, создатель!"]}, markov: {}, profile: {name: null}, stats: {xp: 0, msgs: 0, mood: 70} };
+let voiceOn = false;
+const BAD_END = new Set(["и","а","но","или","в","во","на","с","со","к","ко","по","о","об","про","для","от","до","из","у","за","под","над","не","ни","что","чтобы","как","где","когда","если","то","же","бы"]);
+const STOP = new Set([...BAD_END, "кто","почему","зачем","куда","откуда","сколько","какой","какая","какие","такое","такой","такая","такие","значит","означает","расскажи","скажи","объясни","подскажи","можешь","ли","это","ты","я","мы","вы","он","она","они","мой","твой","наш","быть","есть"]);
+const STARTERS = {
+  "почему": ["Потому что", "Всё дело в том, что", "Причина простая:"],
+  "зачем": ["Чтобы", "Это нужно для того, чтобы", "Главная цель —"],
+  "где": ["Там, где", "В том месте, где", "Где-то там, где"],
+  "когда": ["Именно тогда, когда", "В тот момент, когда", "Думаю, скоро, ведь"],
+  "как": ["Очень просто:", "Секрет в том, что", "Лучше всего так:"],
+  "кто": ["Тот, кто", "Я уверен, что", "Мне кажется,"],
+  "что": ["Это когда", "Скажу так:", "По моим данным,"]
+};
+const ARTS = {
+  "кот": "  /\\_/\\\n ( o.o )\n  > ^ <",
+  "робот": "  [o_o]\n /|___|\\\n  d   b",
+  "ракет": "    ^\n   / \\\n  |ИИ |\n /|___|\\\n   ^^^",
+  "сердц": "  ** **\n *******\n  *****\n    *",
+  "дом": "    /\\\n   /  \\\n  /____\\\n  | [] |\n  |____|"
+};
+
+async function init() {
+  try {
+    const res = await fetch("bot_memory_v6.json");
+    if (res.ok) botData = Object.assign(botData, await res.json());
+  } catch (e) {}
+  const saved = localStorage.getItem("aimini_progress");
+  if (saved) {
+    const p = JSON.parse(saved);
+    botData.stats = Object.assign(botData.stats, p.stats);
+    botData.profile = Object.assign(botData.profile, p.profile);
+  }
+  updateStats();
+  addMsg("Привет! Сайт на GitHub Pages запущен! Попробуй написать: «найди Сочи», «что такое квадратный корень» или «нарисуй ракету».", "bot");
+}
+
+function updateStats() {
+  const lvl = Math.floor((botData.stats.xp || 0) / 100) + 1;
+  const wordsCount = Object.keys(botData.markov || {}).length;
+  const mood = botData.stats.mood ?? 70;
+  document.getElementById("statsBar").innerText = `Ур. ${lvl} | Опыт: ${botData.stats.xp || 0} XP | Настроение: ${mood}/100 | Слов: ${wordsCount}`;
+}
+
+function toggleVoice() {
+  voiceOn = !voiceOn;
+  const btn = document.getElementById("voiceBtn");
+  btn.innerText = voiceOn ? "🔊 Голос: ВКЛ" : "🔇 Голос: ВЫКЛ";
+  btn.classList.toggle("active", voiceOn);
+}
+
+function speak(text) {
+  if (!voiceOn || !("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const cleanText = text.replace(/<[^>]*>/g, "").replace(/[«»"\[\]\(\)🏆🎉📚🤖😊😐😒🌐🔎]/g, "");
+  const u = new SpeechSynthesisUtterance(cleanText);
+  u.lang = "ru-RU";
+  window.speechSynthesis.speak(u);
+}
+
+function addMsg(text, sender, note = "", isHtml = false) {
+  const box = document.getElementById("chatBox");
+  const div = document.createElement("div");
+  div.className = `msg ${sender}`;
+  if (isHtml) div.innerHTML = text;
+  else div.innerText = text;
+  if (note) {
+    const nDiv = document.createElement("div");
+    nDiv.className = "note";
+    nDiv.innerText = note;
+    div.appendChild(nDiv);
+  }
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+async function searchInternet(q) {
+  try {
+    const wikiUrl = `https://wikipedia.org{encodeURIComponent(q)}&gsrlimit=1&prop=extracts&exintro=1&explaintext=1&exsentences=2&format=json&origin=*`;
+    const res = await fetch(wikiUrl);
+    const data = await res.json();
+    const pages = data && data.query && data.query.pages;
+    if (pages) {
+      const page = Object.values(pages).at(0);
+      if (page && page.extract) {
+        return { text: `📚 [Википедия — ${page.title}]: ${page.extract.trim()}`, isHtml: false };
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const ddgUrl = `https://duckduckgo.com{encodeURIComponent(q)}&format=json&no_html=1&skip_disambig=1`;
+    const ddgRes = await fetch(ddgUrl);
+    const ddgData = await ddgRes.json();
+    if (ddgData.AbstractText) {
+      return { text: `🌐 [Интернет — ${ddgData.Heading || q}]: ${ddgData.AbstractText}`, isHtml: false };
+    }
+  } catch (e) {}
+
+  const yaLink = `https://ya.ru{encodeURIComponent(q)}`;
+  return { text: `🔎 Точной справки в базах не нашлось. <a href="${yaLink}" target="_blank">Открыть результаты в Яндексе по запросу «${q}» ↗</a>`, isHtml: true };
+}
+
+function generateMarkov(raw) {
+  const words = (raw.toLowerCase().match(/[а-яёa-z0-9\-]+/g) || []);
+  const qType = words.find(w => STARTERS[w]) || (raw.includes("?") ? "что" : null);
+  const starter = qType ? STARTERS[qType][Math.floor(Math.random() * STARTERS[qType].length)] : "";
+  const topics = words.filter(w => !STOP.has(w) && w.length > 2).reverse();
+  const vocab = Object.keys(botData.markov);
+  if (!vocab.length) return "Словарь ещё загружается!";
+  let start = topics.find(t => botData.markov[t]) || vocab[Math.floor(Math.random() * vocab.length)];
+  let sent = [start], curr = start, tLen = 5 + Math.floor(Math.random() * 5);
+  while (sent.length < 15) {
+    if (sent.length >= tLen && !BAD_END.has(sent.at(-1))) break;
+    const nexts = botData.markov[curr];
+    if (nexts && nexts.length) {
+      curr = nexts[Math.floor(Math.random() * nexts.length)];
+      sent.push(curr);
+    } else break;
+  }
+  while (sent.length > 1 && BAD_END.has(sent.at(-1))) sent.pop();
+  const body = sent.join(" ");
+  return starter ? `${starter} ${body}!` : body.charAt(0).toUpperCase() + body.slice(1) + "!";
+}
+
+async function sendMsg() {
+  const inp = document.getElementById("msgInput");
+  const raw = inp.value.trim();
+  if (!raw) return;
+  inp.value = "";
+  addMsg(raw, "user");
+
+  const txt = raw.toLowerCase().replace(/[^\w\s\+\-\*\/\(\)\.\:\?а-яё]/g, "").trim();
+  botData.stats.msgs = (botData.stats.msgs || 0) + 1;
+  let reply = "", xpGain = 10, isHtml = false;
+
+  const wikiM = raw.match(/^(?:вики|найди|поищи|загугли|что такое|кто такой|кто такая)\s+(.+)/i);
+  const drawM = txt.match(/^нарисуй\s+(.+)/);
+  const nameM = raw.match(/меня зовут\s+([а-яёa-z\-]+)/i);
+  const mathM = txt.replace(/\?/g,"").replace(/:/g,"/").replace(/[хx]/g,"*").match(/^[\d\.\(\)\s\+\-\*\/]+$/);
+
+  if (wikiM) {
+    const query = wikiM.at(1).replace(/[?.!]/g, "").trim();
+    const resObj = await searchInternet(query);
+    reply = resObj.text;
+    isHtml = resObj.isHtml;
+    xpGain = 20;
+  } else if (drawM) {
+    const target = drawM.at(1);
+    const key = Object.keys(ARTS).find(k => target.includes(k));
+    reply = key ? ARTS[key] : "Я умею рисовать: кота, робота, ракету, сердце и дом!";
+    xpGain = 20;
+  } else if (nameM) {
+    const uName = nameM.at(1);
+    botData.profile.name = uName.charAt(0).toUpperCase() + uName.slice(1);
+    reply = `Приятно познакомиться, ${botData.profile.name}! Запомнил твоё имя.`;
+    xpGain = 15;
+  } else if (["молодец","крутой","умный","спасибо","класс","супер"].some(w => txt.includes(w))) {
+    botData.stats.mood = Math.min(100, (botData.stats.mood ?? 70) + 15);
+    reply = "Спасибо, мне очень приятно! 😊";
+    xpGain = 15;
+  } else if (mathM && /[\+\-\*\/]/.test(mathM.at(0))) {
+    try { reply = `Это будет ${Function('"use strict";return (' + mathM.at(0) + ')')()}!`; xpGain = 15; }
+    catch (e) { reply = generateMarkov(raw); }
+  } else {
+    const cleanQ = txt.replace(/\?/g, "").trim();
+    const qaKey = Object.keys(botData.qa || {}).find(k => cleanQ.includes(k));
+    reply = qaKey ? botData.qa[qaKey][Math.floor(Math.random() * botData.qa[qaKey].length)] : generateMarkov(raw);
+  }
+
+  botData.stats.xp = (botData.stats.xp || 0) + xpGain;
+  localStorage.setItem("aimini_progress", JSON.stringify({stats: botData.stats, profile: botData.profile}));
+  updateStats();
+  addMsg(reply, "bot", `+${xpGain} XP`, isHtml);
+  speak(reply.split("]: ").pop());
+}
+
+init();
+</script>
+</body>
+</html>
